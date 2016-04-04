@@ -65,9 +65,22 @@ package com.durej.PSDParser
 				//determine the correct width and height
 				if (channelID < -1) 
 				{
-					//use the mask dimensions
-					width 	= layer.maskBounds.width;
-					height 	= layer.maskBounds.height;
+					// maskBounds was null - added fall back to maskbounds2 and bounds - monkeypunch
+					if (layer.maskBounds) {
+						//use the mask dimensions
+						width 	= layer.maskBounds.width;
+						height 	= layer.maskBounds.height;
+					}
+					else if (layer.maskBounds2) {
+						width 	= layer.maskBounds2.width;
+						height 	= layer.maskBounds2.height;
+					}
+					else if (layer.bounds) {
+						//use the layer dimensions
+						width 	= layer.bounds.width;
+						height 	= layer.bounds.height;
+					}
+						
 				}
 				else
 				{
@@ -241,12 +254,15 @@ package com.durej.PSDParser
 				} 
 				else 
 				{
-					byte = packed.readByte();
-					
-					count = 1 - n;
-					for ( i = 0; i < count; ++i ) 
-					{
-						unpacked.writeByte( byte );
+					// todo - refactor - fix a bug where no bytes were available - monkeypunch
+					if (packed.bytesAvailable!=0) {
+						byte = packed.readByte();
+						
+						count = 1 - n;
+						for ( i = 0; i < count; ++i ) 
+						{
+							unpacked.writeByte( byte );
+						}
 					}
 				}
 			}

@@ -2,6 +2,8 @@ package com.durej.PSDParser
 {
 	 import flash.display.BitmapData;
 	 import flash.utils.ByteArray;
+	 
+	 
 	 /**
 	 * com.durej.PSDParser  
 	 *  
@@ -21,9 +23,80 @@ package com.durej.PSDParser
 	 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,  
 	 * either express or implied. See the License for the specific language 
 	 * governing permissions and limitations under the License. 
+	 * 
+	 * 
+	 * 
+	 * Source:
+	 *  http://durej.com/?p=128
+	 
+	PSD FILE : 
+
+	    Parsing canvas width x height
+	    parsing file color information (number of color channels, color depth, color mode)
+	    parsing file’s composite bitmap snapshot
+	    parsing all layers and layer folders
+	
+	Layers :
+	
+	    parsing layer bitmap data
+	    parsing layers bounds and position
+	    parsing layer name
+	    parsing layer ID
+	    parsing layer blend mode
+	    parsing layer colour channels
+	    parsing layer alpha
+	    parsing layer filters
+	    parsing layer extra  properties such as : isLocked, isVisible, clipping applied
+	    parsing layer type (normal, folder)
+	
+	What is not supported but planned for the future :
+	
+	    layer  masks
+	    layer paths
+	    layer vector shapes
+	    parsing text layers as formatted string
+	    parsing layers with zip (with or without prediction) compression
+	
+	As photshop != flash, there are , and will be some necessary incompatibilities. Although I tried to support all the crossover features, not everything will look the same  after import
+	here are some gotchas :
+	
+	    Layer alpha in flash is layer opacity in Photoshop..Layer Fill values are ignored.
+	    Incompatible photoshop layer blend modes are interpreted as Normal blend mode
+	    Only 4 filters / layer effects are currently supported (drop shadow , inner drop shadow , glow, inner glow) but even these need to have to be applied with normal blend mode, as flash doesn’t support a filters with a different blend mode as the display object they are applied to. For example it’s perfectly possible to have an photoshop layer in screen mode with drop shadow applied in multiply mode, but it flash you don’t have a blend mode settings for a filter..
+	    only layers with RAW or RLE compression are being parsed at the moment.. So if you don’t see the layer bitmap data it’s probably compressed with zip compression.
+	
+	Note on the layer folders / layer groups :
+	Layer groups are being parsed and they are also PSDLayer class type.
+	
+	To identify them you need to check for the layer type:
+	
+	There are 4 layer types :LayerType_FOLDER_OPEN, LayerType_FOLDER_CLOSED , LayerType_HIDDEN and LayerType_NORMAL.
+	
+	Layer folder hidden is marker for the end of the layer group. So if you want to parse the folder structure, check where the layer type folder starts and then every layer that follows is inside of that folder, until you reach layer type hidden.
+	
+	How to use this parser
+	
+	Very simple.  You just create instance of PSDParser (it is Singleton) and then call “parse” method , passing the content of your psd file in byte array format.
+	
+	The parsing is synchronous so after that line, you will already have all the file/layers info available..
+	
+	I’ve made 2 apps that should help you get started.
+	
+	PSD Viewer is a simple flex app that allows you to load and view psd files and reads the supported layers, while showing their blend modes, visibility , lock, alpha , layer effect etc, in “Photoshop-esque” style. View source is enabled so you can get the source code from here. (If you don’t have the psd file to test use the “testPSD1.psd” file from flex project’s “assets” subfolder).
+	
+	Simple example is a basic single class as3 app that just loads the psd file and then on click cycles through the layers, bringing the one in the back to the top.
+	
+	Enjoy!
+	
+	PS:  As this is still early beta, some PSD files may/will break the parser (especially those with unsupported features (see above) or those not saved in compatibility mode…
+	 * 
 	 */
-	public class PSDParser 
-	{
+	public class PSDParser {
+		
+		public function PSDParser(blocker:Blocker, fromSingleton:Boolean):void {
+			if (!fromSingleton || blocker == null) throw new Error("use getInstance");
+		}
+		
 		public static var instance 			: PSDParser;
 		
 		//compression types
@@ -43,13 +116,8 @@ package com.durej.PSDParser
 		public var allBitmaps				: Array; 	//array of all bitmap objects
 		public var composite_bmp			: BitmapData;
 		
-		public function PSDParser(blocker : Blocker,fromSingleton : Boolean)
-		{
-			if (!fromSingleton || blocker == null) throw new Error("use getInstance");
-		}
 		
-		public function parse(fileData:ByteArray):void
-		{
+		public function parse(fileData:ByteArray):void {
 			this.fileData = fileData;
 			
 			readHeader();
@@ -61,6 +129,13 @@ package com.durej.PSDParser
 		private function readHeader() : void 
 		{
 			//check signatue
+			
+			// monkeypunch - adding check for bytes available - 
+			// if called twice on same data it will throw error unless we reset the position
+			if (fileData.bytesAvailable==0 && fileData.position!=0) {
+				fileData.position = 0;
+			}
+			
 			/*
 				Signature: always equal to '8BPS'. Do not try to read the file if the
 				signature does not match this value.
@@ -293,12 +368,40 @@ package com.durej.PSDParser
 			var b:ByteArray = channelsData_arr[2];
 			
 			r.position = 0;
-			g.position = 0;
-			b.position = 0;
+			
+			// g and b are null in a specific grayscale image
+			if (g) {
+				g.position = 0;
+			}
+			
+			if (b) {
+				b.position = 0;
+			}
+			
+			var isGreyScale:Boolean = colorModeStr=="GRAYSCALE";
+			
+			var rgb:uint;
 			
 			for ( var y:int = 0; y < canvas_height; ++y ) {
 				for ( var x:int = 0; x < canvas_width; ++x ) {
-					var rgb:uint = r.readUnsignedByte() << 16 | g.readUnsignedByte() << 8 | b.readUnsignedByte();
+					
+					if (r && g && b) {
+						rgb = r.readUnsignedByte() << 16 | g.readUnsignedByte() << 8 | b.readUnsignedByte();
+					}
+					else if (r && g) {
+						rgb = r.readUnsignedByte() << 16 | g.readUnsignedByte() << 8;
+					}
+					else {
+						if (isGreyScale) {
+							rgb = r.readUnsignedByte() << 16;
+							//rgb = Math.floor(0.3 * rgb + 0.59 * rgb + 0.11 * rgb);
+						}
+						else {
+							rgb = r.readUnsignedByte() << 16;
+							
+						}
+					}
+					
 					composite_bmp.setPixel( x, y, rgb );
 				}
 			}
@@ -325,9 +428,12 @@ package com.durej.PSDParser
 						unpacked.writeByte( packed.readByte() );
 					}
 				} 
-				else 
-				{
-					byte = packed.readByte();
+				else {
+					
+					// monkeypunch - added check when no bytes available
+					if (packed.bytesAvailable) {
+						byte = packed.readByte();
+					}
 					
 					count = 1 - n;
 					for ( i = 0; i < count; ++i ) 

@@ -25,6 +25,7 @@ package com.durej.PSDParser
 		public var name						: String;
 		public var type						: String = LayerType_NORMAL;
 		public var layerID					: uint;
+		public var parentLayerID			: int;
 		public var numChannels				: int;
 		public var channelsInfo_arr			: Array;
 		public var blendModeKey				: String;
