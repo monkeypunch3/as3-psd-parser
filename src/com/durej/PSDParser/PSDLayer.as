@@ -1,12 +1,16 @@
 package com.durej.PSDParser 
 {
-	import flash.geom.Point;
 	import flash.display.BitmapData;
-	import flash.filters.GlowFilter;
-	import flash.filters.DropShadowFilter;
 	import flash.display.BlendMode;
+	import flash.filters.DropShadowFilter;
+	import flash.filters.GlowFilter;
+	import flash.geom.Point;
 	import flash.geom.Rectangle;
 	import flash.utils.ByteArray;
+	
+	import spark.filters.DropShadowFilter;
+	import spark.filters.GlowFilter;
+
 	/**
 	 * @author Slavomir Durej
 	 */
@@ -38,11 +42,14 @@ package com.durej.PSDParser
 		public var isVisible				: Boolean;
 		public var pixelDataIrrelevant		: Boolean;
 		public var nameUNI					: String; //layer unicode name		
-		public var filters_arr				: Array; //filters array	
-			
-		public function PSDLayer(fileData:ByteArray) 
+		public var filters_arr				: Array; //filters array
+		
+		public var useSparkFilters			: Boolean;
+		
+		public function PSDLayer(fileData:ByteArray, useSparkFilterClasses:Boolean = true) 
 		{
 			this.fileData = fileData;
+			useSparkFilters = useSparkFilterClasses;
 			readLayerBasicInfo();	
 		}
 		
@@ -145,7 +152,7 @@ package com.durej.PSDParser
 			//------------------------------------------------------------- get extra data
 			//----------------------------------------------------------------------------
 			
-			var extraSize	:uint = fileData.readUnsignedInt(); //561
+			var extraSize	:uint 	= fileData.readUnsignedInt(); //561
 			var pos			:int 	= fileData.position;
 			var size		:int;
 
@@ -195,7 +202,7 @@ package com.durej.PSDParser
 				//remember previous position
 				prevPos = fileData.position;
 				
-				// trace ("tag = "+tag);
+				//trace ("tag = "+tag);
 				
 				switch (tag)
 				{
@@ -203,15 +210,28 @@ package com.durej.PSDParser
 					case "lyid": layerID 	= fileData.readInt(); break;
 					
 					//------------------------------------------------------------- get layer divider section
-					case "lsct": readLayerSectionDevider(); break;
+					case "lsct": readLayerSectionDivider(); break;
 					
 					//------------------------------------------------------------- get layer unicode name
 					case "luni": nameUNI 	= fileData.readUTFBytes(4); break;
 					
 					//------------------------------------------------------------- get layer effects
 					case "lrFX": parseLayerEffects(); break;
+					
+					//------------------------------------------------------------- get layer text
+					// disabled for now since we can't get descriptor class to parse correctly
+					//case "TySh": parseTextElements(fileData); break;
 				}
-				
+				// lnsr=LayerNameSource, 
+				// clbl=BlendClippingElements, 
+				// infx=BlendInteriorElements, 
+				// knko=?,
+				// lspf=Locked, 
+				// lclr=?,
+				// shmd=Metadata, 
+				// fxrp=?, 
+				// lfx2=ObjectEffects
+				// TySh=TextElements
 				fileData.position += prevPos + size - fileData.position;
 			}
 			
@@ -251,24 +271,24 @@ package com.durej.PSDParser
 						fileData.position+=11;	
 						break;
 					
-					case "dsdw":		//drop shadow
+					case "dsdw":		// drop shadow
 						remainingSize 				= fileData.readInt(); 
-						parseDropShadow(fileData,false);
+						parseDropShadow(fileData, false);
 						break;
 					
-					case "isdw":		//inner drop shadow
+					case "isdw":		// inner drop shadow
 						remainingSize 				= fileData.readInt(); 
-						parseDropShadow(fileData,true);
+						parseDropShadow(fileData, true);
 						break;
 					
-					case "oglw":		//outer glow
+					case "oglw":		// outer glow
 						remainingSize 				= fileData.readInt(); 
-						parseGlow(fileData,false);
+						parseGlow(fileData, false);
 						break;
 					
-					case "iglw":		//inner glow
+					case "iglw":		// inner glow
 						remainingSize 				= fileData.readInt(); 
-						parseGlow(fileData,true);
+						parseGlow(fileData, true);
 						break;
 					
 					
@@ -282,11 +302,7 @@ package com.durej.PSDParser
 		}		
 		
 		
-		
-
-		
-		private function parseGlow(fileData:ByteArray, inner:Boolean = false):void
-		{
+		private function parseGlow(fileData:ByteArray, inner:Boolean = false):void {
 			//4 Size of the remaining items: 41 or 51 (depending on version)
 			var ver				:int 	= fileData.readInt(); 			//0 (Photoshop 5.0) or 2 (Photoshop 5.5)
 			var blur			:int 	= fileData.readShort();			//Blur value in pixels (8)
@@ -299,10 +315,10 @@ package com.durej.PSDParser
 			fileData.position+=1;							
 			var color_b:int = fileData.readUnsignedByte();
 			
-			//color shoul be 0xFFFF6633
+			//color should be 0xFFFF6633
 			var colorValue		:uint = color_r<< 16 | color_g << 8 | color_b;
 			
-			fileData.position+=3;	
+			fileData.position+=3;
 			
 			var blendSig:String = fileData.readUTFBytes( 4 );
 			if (blendSig != "8BIM") throw new Error("Invalid Blend mode signature for Effect: " + blendSig ); 
@@ -313,9 +329,9 @@ package com.durej.PSDParser
 			*/
 			var blendModeKey:String = fileData.readUTFBytes( 4 );
 			
-			var effectIsEnabled:Boolean = fileData.readBoolean();			//1 Effect enabled
+			var effectIsEnabled:Boolean = fileData.readBoolean();				//1 Effect enabled
 			
-			var alpha : Number		= fileData.readUnsignedByte() /255;	 					//1 Opacity as a percent
+			var alpha : Number		= fileData.readUnsignedByte() /255;	 		//1 Opacity as a percent
 			
 			if (ver == 2)
 			{
@@ -333,23 +349,39 @@ package com.durej.PSDParser
 				var nativeColor		:uint = color_r<< 16 | color_g << 8 | color_b;
 			}
 			
-			if (effectIsEnabled)
-			{
-				var glowFilter:GlowFilter	= new GlowFilter();
-				glowFilter.alpha 			= alpha;
-				glowFilter.blurX 			= blur;
-				glowFilter.blurY 			= blur;
-				glowFilter.color 			= colorValue;
-				glowFilter.quality 			= 4;
-				glowFilter.strength			= 1; //intensity isn't being passed correctly;
-				glowFilter.inner 			= inner;
-				
-				filters_arr.push(glowFilter);
+			var flashGlowFilter:flash.filters.GlowFilter;
+			var glowFilter:spark.filters.GlowFilter;
+			
+			if (effectIsEnabled) {
+				if (useSparkFilters) {
+					glowFilter	= new spark.filters.GlowFilter();
+					glowFilter.alpha 			= alpha;
+					glowFilter.blurX 			= blur;
+					glowFilter.blurY 			= blur;
+					glowFilter.color 			= colorValue;
+					glowFilter.quality 			= 4;
+					glowFilter.strength			= 1; //intensity isn't being passed correctly;
+					glowFilter.inner 			= inner;
+					
+					filters_arr.push(glowFilter);
+					
+				}
+				else {
+					flashGlowFilter	= new flash.filters.GlowFilter();
+					flashGlowFilter.alpha 			= alpha;
+					flashGlowFilter.blurX 			= blur;
+					flashGlowFilter.blurY 			= blur;
+					flashGlowFilter.color 			= colorValue;
+					flashGlowFilter.quality 		= 4;
+					flashGlowFilter.strength		= 1; //intensity isn't being passed correctly;
+					flashGlowFilter.inner 			= inner;
+					
+					filters_arr.push(flashGlowFilter);
+				}
 			}
 		}		
 		
-		private function parseDropShadow(fileData:ByteArray, inner:Boolean = false):void
-		{
+		private function parseDropShadow(fileData:ByteArray, inner:Boolean = false):void {
 						//4 Size of the remaining items: 41 or 51 (depending on version)
 			var ver				:int 	= fileData.readInt(); 			//0 (Photoshop 5.0) or 2 (Photoshop 5.5)
 			var blur			:int 	= fileData.readShort();			//Blur value in pixels (8)
@@ -395,20 +427,40 @@ package com.durej.PSDParser
 			
 			var nativeColor		:uint = color_r<< 16 | color_g << 8 | color_b;
 			
-			if (effectIsEnabled)
-			{
-				var dropShadowFilter:DropShadowFilter = new DropShadowFilter();
-				dropShadowFilter.alpha 		= alpha;
-				dropShadowFilter.angle 		= 180 - angle;
-				dropShadowFilter.blurX 		= blur;
-				dropShadowFilter.blurY 		= blur;
-				dropShadowFilter.color 		= colorValue;
-				dropShadowFilter.quality 	= 4;
-				dropShadowFilter.distance 	= distance;
-				dropShadowFilter.inner 		= inner;
-				dropShadowFilter.strength	= 1;
+			var dropShadowFilter:spark.filters.DropShadowFilter;
+			var flashDropShadowFilter:flash.filters.DropShadowFilter;
+			
+			if (effectIsEnabled) {
 				
-				filters_arr.push(dropShadowFilter);
+				if (useSparkFilters) {
+					dropShadowFilter = new spark.filters.DropShadowFilter();
+					dropShadowFilter.alpha 		= alpha;
+					dropShadowFilter.angle 		= 180 - angle;
+					dropShadowFilter.blurX 		= blur;
+					dropShadowFilter.blurY 		= blur;
+					dropShadowFilter.color 		= colorValue;
+					dropShadowFilter.quality 	= 4;
+					dropShadowFilter.distance 	= distance;
+					dropShadowFilter.inner 		= inner;
+					dropShadowFilter.strength	= 1;
+					
+					filters_arr.push(dropShadowFilter);
+				}
+				else {
+					
+					flashDropShadowFilter = new flash.filters.DropShadowFilter();
+					flashDropShadowFilter.alpha 		= alpha;
+					flashDropShadowFilter.angle 		= 180 - angle;
+					flashDropShadowFilter.blurX 		= blur;
+					flashDropShadowFilter.blurY 		= blur;
+					flashDropShadowFilter.color 		= colorValue;
+					flashDropShadowFilter.quality 	= 4;
+					flashDropShadowFilter.distance 	= distance;
+					flashDropShadowFilter.inner 		= inner;
+					flashDropShadowFilter.strength	= 1;
+					
+					filters_arr.push(flashDropShadowFilter);
+				}
 				
 				if (filters_arr.length == 2)
 				{
@@ -427,7 +479,7 @@ package com.durej.PSDParser
 			return new Rectangle(x,y,right-x, bottom-y);
 		}
 		
-		private function readLayerSectionDevider() :void
+		private function readLayerSectionDivider() :void
 		{
 			var dividerType : int = fileData.readInt();
 			
@@ -466,9 +518,6 @@ package com.durej.PSDParser
 			}
 		}
 		
-			
-			
-		
 		private function parseLayerMaskData( stream:ByteArray ):void 
 		{
 			//-------------------------------------------------------------  READING LAYER MASK
@@ -503,6 +552,10 @@ package com.durej.PSDParser
 					maskBounds = readRect();
 				}
 			}
-		}			
+		}
+		
+		private function parseTextElements(stream:ByteArray):void {
+			var textElement:TextElement = new TextElement(stream);
+		}
 	}
 }

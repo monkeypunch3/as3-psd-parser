@@ -1,13 +1,11 @@
 package com.durej.PSDParser 
 {
-	import flash.geom.Rectangle;
 	import flash.display.BitmapData;
 	import flash.utils.ByteArray;
+	
 	/**
 	 * @author Slavomir Durej
 	 */
-
-
 	public class PSDLayerBitmap 
 	{
 
@@ -51,6 +49,7 @@ package com.durej.PSDParser
 					var channelLenghtInfo	:PSDChannelInfoVO = layer.channelsInfo_arr[i];
 					pixelDataSize+=channelLenghtInfo.length;
 				}
+				
 				//skip image data parsing for layer folders (for now)
 				fileData.position+= pixelDataSize;
 				return;
@@ -65,7 +64,8 @@ package com.durej.PSDParser
 				//determine the correct width and height
 				if (channelID < -1) 
 				{
-					// maskBounds was null - added fall back to maskbounds2 and bounds - monkeypunch
+					// monkeypunch - maskBounds was null so added a check 
+					// and fall back to maskbounds2 or bounds
 					if (layer.maskBounds) {
 						//use the mask dimensions
 						width 	= layer.maskBounds.width;
@@ -96,7 +96,7 @@ package com.durej.PSDParser
 					return;
 				}
 				
-				var channelData:ByteArray = readColorPlane(i,height,width, channelLength);
+				var channelData:ByteArray = readColorPlane(i, height, width, channelLength);
 				
 				if (channelData.length == 0) return; //TODO fix this later				
 
@@ -127,7 +127,7 @@ package com.durej.PSDParser
 			renderImage(isTransparent);
 		}
 	
-		private function readColorPlane(planeNum:int,height:int, width:int, channelLength:int):ByteArray
+		private function readColorPlane(planeNum:int, height:int, width:int, channelLength:int):ByteArray
 		{
 			var channelDataSize:int = width * height;
 			var isRLEncoded:Boolean = false;
@@ -172,13 +172,15 @@ package com.durej.PSDParser
 			return imageData;	
 		}
 	
-	
-	
 		
 		private function renderImage( transparent:Boolean = false ):void 
 		{
-			if (transparent) image = new BitmapData( width, height, true, 0x00000000 );
-			else image = new BitmapData( width, height, false, 0x000000 );
+			if (transparent) {
+				image = new BitmapData( width, height, true, 0x00000000 );
+			}
+			else {
+				image = new BitmapData( width, height, false, 0x000000 );
+			}
 			
 			//init alpha channel
 			if (transparent)

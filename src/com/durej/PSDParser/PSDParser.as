@@ -62,7 +62,11 @@ package com.durej.PSDParser
 	
 	    Layer alpha in flash is layer opacity in Photoshop..Layer Fill values are ignored.
 	    Incompatible photoshop layer blend modes are interpreted as Normal blend mode
-	    Only 4 filters / layer effects are currently supported (drop shadow , inner drop shadow , glow, inner glow) but even these need to have to be applied with normal blend mode, as flash doesn’t support a filters with a different blend mode as the display object they are applied to. For example it’s perfectly possible to have an photoshop layer in screen mode with drop shadow applied in multiply mode, but it flash you don’t have a blend mode settings for a filter..
+	    Only 4 filters / layer effects are currently supported (drop shadow , inner drop shadow , glow, inner glow) 
+		 * but even these need to have to be applied with normal blend mode, 
+		 * as flash doesn’t support a filters with a different blend mode as the display object they are applied to. 
+		 * For example it’s perfectly possible to have an photoshop layer in screen mode with drop shadow applied in multiply mode, 
+		 * but it flash you don’t have a blend mode settings for a filter..
 	    only layers with RAW or RLE compression are being parsed at the moment.. So if you don’t see the layer bitmap data it’s probably compressed with zip compression.
 	
 	Note on the layer folders / layer groups :
@@ -272,7 +276,7 @@ package com.durej.PSDParser
 			
 			if ( layerInfoSize > 0 ) 
 			{
-				//get total nu of layers
+				//get total num of layers
 				var nLayers : int = fileData.readShort();
 				
 				/*
@@ -369,7 +373,8 @@ package com.durej.PSDParser
 			
 			r.position = 0;
 			
-			// g and b are null in a specific grayscale image
+			// monkeypunch g and b are null in a specific grayscale image
+			// so checking for null
 			if (g) {
 				g.position = 0;
 			}
